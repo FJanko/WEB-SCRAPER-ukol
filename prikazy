@@ -1,0 +1,5 @@
+prikazy
+
+pip install -r requirements.txt
+
+projekt_3.py  requirements.txt
