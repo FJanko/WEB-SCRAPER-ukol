@@ -1,100 +1,91 @@
-"webscraper.py"
+""" 
+projekt_3.py: třetí projekt - Volební scraper
+author: (Filip Jankovský)
+email: (janko09063@mot.sps-dopravni.cz)
+"""
 
 import sys
 import csv
 import requests
 from bs4 import BeautifulSoup
 
-# 1. KONTROLA ARGUMENTŮ
-# Program potřebuje přesně 2 argumenty: URL a název CSV souboru
-if len(sys.argv) != 3:
-    print("Chyba: Musíš zadat 2 argumenty (odkaz a název výstupního souboru)!")
-    print('Příklad: python projekt_3.py "https://url_adresa" "vysledky.csv"')
-    sys.exit()
+def main():
+    # 1. KONTROLA ARGUMENTŮ [cite: 88, 92]
+    if len(sys.argv) != 3:
+        print("CHYBA: Zadal jsi špatný počet argumentů!")
+        print("Spusť to takto: python3 projekt_3.py <odkaz> <soubor.csv>")
+        sys.exit()
 
-url_hlavni = sys.argv[1]
-soubor_vystup = sys.argv[2]
+    url_okresu = sys.argv[1]
+    jmeno_souboru = sys.argv[2]
+    
+    print(f"ZÍSKÁVÁM DATA Z URL: {url_okresu}")
 
-# Kontrola, zda odkaz vede na správný web volby.cz
-if "volby.cz" not in url_hlavni:
-    print("Chyba: První argument musí být platný odkaz z volby.cz!")
-    sys.exit()
+    # 2. STAŽENÍ HLAVNÍ STRÁNKY
+    odpoved = requests.get(url_okresu)
+    soup = BeautifulSoup(odpoved.text, "html.parser")
 
-print(f"ZÍSKÁVÁM DATA Z URL: {url_hlavni}")
+    vsechna_data = []
+    # Zde připravujeme hlavičku přesně podle zadání (body 1 až 5) [cite: 113-118]
+    hlavicka = ["Kód obce", "Název obce", "Voliči v seznamu", "Vydané obálky", "Platné hlasy"]
+    mame_nazvy_stran = False
 
-# Stažení hlavní stránky okresu
-odpoved = requests.get(url_hlavni)
-soup_hlavni = BeautifulSoup(odpoved.text, "html.parser")
-
-# Tady budeme ukládat řádky s daty pro CSV
-vsechny_obce_data = []
-hlavicka_csv = ["code", "location", "registered", "envelopes", "valid"]
-nactena_hlavicka = False
-
-# Najdeme všechny řádky tabulky s obcemi
-radky_obci = soup_hlavni.find_all("tr")
-
-# 2. PROCHÁZENÍ VŠECH OBCÍ
-for radek in radky_obci:
-    # Hledáme políčko s kódem obce (obsahuje odkaz křížku "X" nebo číslo)
-    td_kod = radek.find("td", class_="cislo")
-    if td_kod is None:
-        continue
+    # 3. PROCHÁZENÍ OBCÍ
+    for radek in soup.find_all("tr"):
+        td_kod = radek.find("td", class_="cislo")
+        td_nazev = radek.find("td", class_="overflow_name")
         
-    # Získáme kód obce a název obce
-    kod_obce = td_kod.text.strip()
-    nazev_obce = radek.find("td", class_="overflow_name").text.strip()
-    
-    # Najdeme odkaz na detail obce (schovává se pod křížkem nebo číslem)
-    odkaz_tag = td_kod.find("a")
-    if odkaz_tag is None:
-        continue
-        
-    # Poskládáme celou URL adresu pro detail konkrétní obce
-    url_obec = "https://volby.cz/pls/ps2017nss/" + odkaz_tag["href"]
-    print(f"ZÍSKÁVÁM DATA Z URL: {url_obec}")
-    
-    # Stáhneme detail obce
-    odpoved_obec = requests.get(url_obec)
-    soup_obec = BeautifulSoup(odpoved_obec.text, "html.parser")
-    
-    # 3. SCRAPOVÁNÍ DAT O VOLIČÍCH
-    volici = soup_obec.find("td", {"headers": "sa2"}).text.strip().replace("\xa0", "")
-    obalky = soup_obec.find("td", {"headers": "sa3"}).text.strip().replace("\xa0", "")
-    hlasy = soup_obec.find("td", {"headers": "sa6"}).text.strip().replace("\xa0", "")
-    
-    # Základní data obce
-    radek_data = [kod_obce, nazev_obce, volici, obalky, hlasy]
-    
-    # 4. SCRAPOVÁNÍ HLASŮ PRO STRANY
-    strany_hlasy = []
-    
-    # Projdeme tabulky s politickými stranami (jsou tam dvě vedle sebe)
-    for t_num in ["t1sa2", "t2sa2"]:
-        radky_stran = soup_obec.find_all("tr")
-        for r_strana in radky_stran:
-            td_nazev = r_strana.find("td", {"headers": t_num + "r1"})
-            td_hlasy = r_strana.find("td", {"headers": t_num + "r2"})
+        if td_kod is None or td_nazev is None:
+            continue
             
-            if td_nazev and td_hlasy:
-                nazev_strany = td_nazev.text.strip()
-                pocet_hlasu = td_hlasy.text.strip().replace("\xa0", "")
+        kod_obce = td_kod.text.strip()
+        nazev_obce = td_nazev.text.strip()
+        odkaz_element = td_kod.find("a")
+        
+        if odkaz_element is None:
+            continue
+            
+        url_obce = "https://volby.cz/pls/ps2017nss/" + odkaz_element["href"]
+        print(f"Stahuji obec: {nazev_obce}")
+        
+        # 4. STAŽENÍ DETAILU OBCE
+        odpoved_obce = requests.get(url_obce)
+        soup_obce = BeautifulSoup(odpoved_obce.text, "html.parser")
+        
+        # Získání dat (body 3, 4, 5 ze zadání) [cite: 116-118]
+        volici = soup_obce.find("td", {"headers": "sa2"}).text.replace("\xa0", "")
+        obalky = soup_obce.find("td", {"headers": "sa3"}).text.replace("\xa0", "")
+        platne_hlasy = soup_obce.find("td", {"headers": "sa6"}).text.replace("\xa0", "")
+        
+        radek_obce_data = [kod_obce, nazev_obce, volici, obalky, platne_hlasy]
+        
+        # 5. ZÍSKÁNÍ HLASŮ PRO STRANY (bod 6 ze zadání) [cite: 119]
+        for cislo_tabulky in ["t1", "t2"]:
+            for radek_strany in soup_obce.find_all("tr"):
+                td_jmeno_strany = radek_strany.find("td", {"headers": f"{cislo_tabulky}sa1 {cislo_tabulky}sb2"})
+                td_pocet_hlasu = radek_strany.find("td", {"headers": f"{cislo_tabulky}sa2 {cislo_tabulky}sb3"})
                 
-                # Pokud ještě nemáme názvy stran v hlavičce, přidáme je tam
-                if not nactena_hlavicka:
-                    hlavicka_csv.append(nazev_strany)
+                if td_jmeno_strany and td_pocet_hlasu:
+                    jmeno = td_jmeno_strany.text.strip()
+                    hlasy = td_pocet_hlasu.text.replace("\xa0", "")
                     
-                strany_hlasy.append(pocet_hlasu)
-                
-    nactena_hlavicka = True
-    # Spojíme základní data s hlasy stran
-    vsechny_obce_data.append(radek_data + strany_hlasy)
+                    if not mame_nazvy_stran:
+                        hlavicka.append(jmeno) # Přidá stranu do hlavičky tabulky
+                    
+                    radek_obce_data.append(hlasy)
+                    
+        mame_nazvy_stran = True
+        vsechna_data.append(radek_obce_data)
 
-# 5. ZÁPIS DO CSV SOUBORU
-print(f"UKLÁDÁM DATA DO SOUBORU: {soubor_vystup}")
-with open(soubor_vystup, mode="w", newline="", encoding="utf-8") as f:
-    pisar = csv.writer(f)
-    pisar.writerow(hlavicka_csv)
-    pisar.writerows(vsechny_obce_data)
+    # 6. ULOŽENÍ DO PŘEHLEDNÉHO CSV
+    print(f"UKLÁDÁM DATA DO SOUBORU: {jmeno_souboru}")
+    # Výchozí CSV formát oddělený čárkou, přesně jak vyžaduje ukázka v zadání
+    with open(jmeno_souboru, mode="w", newline="", encoding="utf-8-sig") as soubor:
+        zapisovac = csv.writer(soubor, delimiter=",")
+        zapisovac.writerow(hlavicka)
+        zapisovac.writerows(vsechna_data)
 
-print("DOKONČUJI: hotovo")
+    print("DOKONČUJI: hotovo")
+
+if __name__ == "__main__":
+    main()
